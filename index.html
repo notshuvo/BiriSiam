@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Cigarette</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.11.4/dist/gsap.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111;
+        }
+        canvas {
+            display: block;
+        }
+        .info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Arial', sans-serif;
+            max-width: 300px;
+        }
+        .warning {
+            color: #ff5555;
+            font-weight: bold;
+        }
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .control-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.4);
+        }
+        .ash-particle {
+            position: absolute;
+            background-color: #ccc;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    
+    <div class="info-panel">
+        <h2 class="text-xl font-bold mb-2">Siam bai</h2>
+        <p class="text-sm mb-3">kire siam.</p>
+        <p class="warning text-xs">Warning: Smoking is harmful to health.Siam birikhor.</p>
+    </div>
+    
+    <div class="controls">
+        <button id="lightBtn" class="control-btn">Light Cigarette</button>
+        <button id="extinguishBtn" class="control-btn">Extinguish</button>
+        <button id="blowBtn" class="control-btn">Blow Smoke</button>
+    </div>
+
+    <script>
+        // Initialize Three.js scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('container').appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        const pointLight = new THREE.PointLight(0xffaa33, 2, 10);
+        pointLight.position.set(0, 0, 2);
+        scene.add(pointLight);
+
+        // Cigarette components
+        const cigaretteGroup = new THREE.Group();
+        scene.add(cigaretteGroup);
+
+        // Cigarette body (white paper)
+        const cigaretteGeometry = new THREE.CylinderGeometry(0.2, 0.2, 5, 32);
+        const cigaretteMaterial = new THREE.MeshPhongMaterial({
+            color: 0xf5f5f5,
+            specular: 0x111111,
+            shininess: 30
+        });
+        const cigarette = new THREE.Mesh(cigaretteGeometry, cigaretteMaterial);
+        cigarette.rotation.z = Math.PI / 2;
+        cigaretteGroup.add(cigarette);
+
+        // Filter (brown part)
+        const filterGeometry = new THREE.CylinderGeometry(0.2, 0.2, 1, 32);
+        const filterMaterial = new THREE.MeshPhongMaterial({
+            color: 0x8B4513,
+            specular: 0x111111,
+            shininess: 30
+        });
+        const filter = new THREE.Mesh(filterGeometry, filterMaterial);
+        filter.rotation.z = Math.PI / 2;
+        filter.position.x = -3;
+        cigaretteGroup.add(filter);
+
+        // Burning tip (with glow)
+        const tipGeometry = new THREE.CylinderGeometry(0.2, 0.2, 0.3, 32);
+        const tipMaterial = new THREE.MeshPhongMaterial({
+            color: 0xff3300,
+            emissive: 0xff5500,
+            emissiveIntensity: 0.5,
+            specular: 0xff9966,
+            shininess: 10
+        });
+        const tip = new THREE.Mesh(tipGeometry, tipMaterial);
+        tip.rotation.z = Math.PI / 2;
+        tip.position.x = 2.5;
+        cigaretteGroup.add(tip);
+
+        // Smoke particles
+        const smokeParticles = [];
+        const smokeGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+        const smokeMaterial = new THREE.MeshPhongMaterial({
+            color: 0xeeeeee,
+            transparent: true,
+            opacity: 0.4,
+            specular: 0xffffff,
+            shininess: 10
+        });
+
+        for (let i = 0; i < 100; i++) {
+            const particle = new THREE.Mesh(smokeGeometry, smokeMaterial.clone());
+            particle.visible = false;
+            particle.position.set(2.5, 0, 0);
+            particle.userData.velocity = new THREE.Vector3();
+            particle.userData.life = 0;
+            smokeParticles.push(particle);
+            scene.add(particle);
+        }
+
+        // Ash particles (HTML for better realism)
+        const ashParticles = [];
+        function createAshParticle() {
+            const ash = document.createElement('div');
+            ash.className = 'ash-particle';
+            ash.style.width = `${Math.random() * 3 + 1}px`;
+            ash.style.height = ash.style.width;
+            ash.style.opacity = Math.random() * 0.5 + 0.3;
+            document.body.appendChild(ash);
+            
+            const particle = {
+                element: ash,
+                x: 0,
+                y: 0,
+                vx: (Math.random() - 0.5) * 0.5,
+                vy: Math.random() * -0.5 - 0.5,
+                life: 0,
+                maxLife: Math.random() * 1000 + 500
+            };
+            
+            ashParticles.push(particle);
+            return particle;
+        }
+
+        // Camera position
+        camera.position.set(0, 0, 5);
+        camera.lookAt(0, 0, 0);
+
+        // Animation state
+        let isLit = false;
+        let smokeIntensity = 0;
+        let burnTime = 0;
+        let nextAshTime = 0;
+        let cigaretteLength = 5;
+
+        // Controls
+        document.getElementById('lightBtn').addEventListener('click', () => {
+            isLit = true;
+            smokeIntensity = 1;
+            tipMaterial.emissiveIntensity = 1;
+            pointLight.intensity = 2;
+        });
+
+        document.getElementById('extinguishBtn').addEventListener('click', () => {
+            isLit = false;
+            smokeIntensity = 0;
+            tipMaterial.emissiveIntensity = 0;
+            pointLight.intensity = 0;
+        });
+
+        document.getElementById('blowBtn').addEventListener('click', () => {
+            if (isLit) {
+                // Create a burst of smoke
+                for (let i = 0; i < 30; i++) {
+                    const particle = smokeParticles.find(p => !p.visible);
+                    if (particle) {
+                        particle.visible = true;
+                        particle.position.set(2.5, 0, 0);
+                        particle.userData.velocity.set(
+                            (Math.random() - 0.5) * 0.2,
+                            Math.random() * 0.1,
+                            (Math.random() - 0.5) * 0.2
+                        );
+                        particle.userData.life = 0;
+                        particle.scale.set(1, 1, 1);
+                        particle.material.opacity = 0.6;
+                    }
+                }
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Rotate cigarette slightly for better viewing
+            cigaretteGroup.rotation.y = Math.sin(Date.now() * 0.001) * 0.2;
+
+            // Smoke animation
+            if (isLit) {
+                burnTime += 16;
+                
+                // Gradually reduce cigarette length
+                if (burnTime > 10000 && cigaretteLength > 1) {
+                    cigaretteLength -= 0.0005;
+                    cigarette.scale.y = cigaretteLength / 5;
+                    tip.position.x = 2.5 * (cigaretteLength / 5);
+                }
+                
+                // Create ash particles periodically
+                if (burnTime > nextAshTime) {
+                    createAshParticle();
+                    nextAshTime = burnTime + Math.random() * 300 + 100;
+                }
+                
+                // Create smoke particles
+                if (Math.random() < smokeIntensity * 0.1) {
+                    const particle = smokeParticles.find(p => !p.visible);
+                    if (particle) {
+                        particle.visible = true;
+                        particle.position.set(2.5, 0, 0);
+                        particle.userData.velocity.set(
+                            (Math.random() - 0.5) * 0.02,
+                            Math.random() * 0.02 + 0.01,
+                            (Math.random() - 0.5) * 0.02
+                        );
+                        particle.userData.life = 0;
+                        particle.scale.set(1, 1, 1);
+                        particle.material.opacity = 0.4;
+                    }
+                }
+            }
+
+            // Update smoke particles
+            smokeParticles.forEach(particle => {
+                if (particle.visible) {
+                    particle.userData.life += 16;
+                    particle.position.add(particle.userData.velocity);
+                    
+                    // Add some turbulence
+                    particle.userData.velocity.x += (Math.random() - 0.5) * 0.005;
+                    particle.userData.velocity.y += (Math.random()) * 0.005;
+                    particle.userData.velocity.z += (Math.random() - 0.5) * 0.005;
+                    
+                    // Expand and fade
+                    const lifeFactor = particle.userData.life / 2000;
+                    if (lifeFactor < 1) {
+                        const scale = 1 + lifeFactor * 3;
+                        particle.scale.set(scale, scale, scale);
+                        particle.material.opacity = 0.4 * (1 - lifeFactor);
+                    } else {
+                        particle.visible = false;
+                    }
+                }
+            });
+
+            // Update ash particles
+            for (let i = ashParticles.length - 1; i >= 0; i--) {
+                const ash = ashParticles[i];
+                ash.life += 16;
+                
+                if (ash.life > ash.maxLife) {
+                    ash.element.remove();
+                    ashParticles.splice(i, 1);
+                    continue;
+                }
+                
+                ash.x += ash.vx;
+                ash.y += ash.vy;
+                ash.vy += 0.001; // gravity
+                
+                // Convert 3D position to screen position
+                const tipPosition = tip.position.clone().applyMatrix4(cigaretteGroup.matrixWorld);
+                const screenPosition = tipPosition.clone().project(camera);
+                
+                const x = (screenPosition.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (-(screenPosition.y * 0.5 + 0.5)) * window.innerHeight;
+                
+                ash.element.style.transform = `translate(${x + ash.x}px, ${y + ash.y}px)`;
+                ash.element.style.opacity = 1 - (ash.life / ash.maxLife);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start animation
+        animate();
+
+        // Initial ash particles
+        for (let i = 0; i < 5; i++) {
+            createAshParticle();
+        }
+    </script>
+</body>
+</html>
